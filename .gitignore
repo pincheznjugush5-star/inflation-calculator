@@ -9,3 +9,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# Transfer artifacts (git bundles built for hand-off)
+*.bundle
