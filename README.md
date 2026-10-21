@@ -27,6 +27,20 @@ python3 tools/fetch_cpi.py                 # refresh the US series
 python3 tools/fetch_world.py               # refresh every other country
 ```
 
+### Hosting
+
+The server reads `PORT` and `HOST` from the environment, so it deploys to any
+platform that injects a port (Render, Railway, Fly, Heroku, a container) with no
+changes. `--port` and `--host` still take precedence when passed explicitly.
+
+```bash
+PORT=8080 python3 -m inflation.server
+```
+
+`Procfile` and `render.yaml` are included. There is nothing to install: the app
+is standard library only, so there is no build step and no dependency cache to
+warm.
+
 ## What it does
 
 | Mode | What it answers |

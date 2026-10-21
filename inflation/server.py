@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -249,10 +250,21 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
 
+def env_port(default: int = 12000) -> int:
+    """Port from $PORT, so hosting platforms can inject it."""
+    raw = os.environ.get("PORT", "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        raise SystemExit(f"PORT must be an integer, got {raw!r}")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--host", default="0.0.0.0")
-    ap.add_argument("--port", type=int, default=12000)
+    ap.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"))
+    ap.add_argument("--port", type=int, default=env_port())
     args = ap.parse_args()
     load_series()  # fail fast if data is missing
     httpd = ThreadingHTTPServer((args.host, args.port), Handler)

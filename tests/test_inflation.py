@@ -5,8 +5,12 @@ Run with:  python3 -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import io
 import json
+import os
+import sys
 import unittest
+from unittest import mock
 
 from inflation.calc import (
     average_inflation,
@@ -383,6 +387,65 @@ class FreshnessTests(unittest.TestCase):
         self.assertIn("stale", payload)
         self.assertIn("newest_year", payload)
         self.assertIn("freshness", api_meta(self.series, {}))
+
+
+class ServerConfigTests(unittest.TestCase):
+    """Hosting platforms inject the port via $PORT; the CLI must still win."""
+
+    def test_env_port_reads_port_variable(self):
+        from inflation.server import env_port
+
+        with mock.patch.dict(os.environ, {"PORT": "8080"}, clear=False):
+            self.assertEqual(env_port(), 8080)
+
+    def test_env_port_falls_back_when_unset(self):
+        from inflation.server import env_port
+
+        env = {k: v for k, v in os.environ.items() if k != "PORT"}
+        with mock.patch.dict(os.environ, env, clear=True):
+            self.assertEqual(env_port(), 12000)
+            self.assertEqual(env_port(default=5000), 5000)
+
+    def test_env_port_ignores_blank(self):
+        from inflation.server import env_port
+
+        with mock.patch.dict(os.environ, {"PORT": "   "}, clear=False):
+            self.assertEqual(env_port(), 12000)
+
+    def test_env_port_rejects_garbage(self):
+        from inflation.server import env_port
+
+        with mock.patch.dict(os.environ, {"PORT": "not-a-port"}, clear=False):
+            with self.assertRaises(SystemExit):
+                env_port()
+
+    def test_cli_port_overrides_env(self):
+        """An explicit --port must beat $PORT, so local runs stay predictable."""
+        from inflation.server import main
+
+        with mock.patch.dict(os.environ, {"PORT": "9999"}, clear=False):
+            with mock.patch.object(sys, "argv", ["server", "--port", "1234"]):
+                with mock.patch("inflation.server.load_series"):
+                    with mock.patch("inflation.server.ThreadingHTTPServer") as srv:
+                        srv.return_value.serve_forever.side_effect = KeyboardInterrupt
+                        with mock.patch("sys.stdout", new=io.StringIO()):
+                            main()
+                        bound = srv.call_args[0][0]
+                        self.assertEqual(bound[1], 1234)
+
+    def test_env_port_used_when_cli_omitted(self):
+        """With no --port, $PORT decides, which is what hosts rely on."""
+        from inflation.server import main
+
+        with mock.patch.dict(os.environ, {"PORT": "7777"}, clear=False):
+            with mock.patch.object(sys, "argv", ["server"]):
+                with mock.patch("inflation.server.load_series"):
+                    with mock.patch("inflation.server.ThreadingHTTPServer") as srv:
+                        srv.return_value.serve_forever.side_effect = KeyboardInterrupt
+                        with mock.patch("sys.stdout", new=io.StringIO()):
+                            main()
+                        bound = srv.call_args[0][0]
+                        self.assertEqual(bound[1], 7777)
 
 
 class ServerTests(unittest.TestCase):

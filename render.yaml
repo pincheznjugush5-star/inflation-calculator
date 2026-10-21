@@ -1,0 +1,13 @@
+# Deploy config for platforms that read render.yaml (Render, and a useful
+# template for others). The app has no dependencies, so there is no build step.
+services:
+  - type: web
+    name: inflation-calculator
+    runtime: python
+    plan: free
+    buildCommand: ""
+    startCommand: python3 -m inflation.server
+    healthCheckPath: /api/freshness
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12"
