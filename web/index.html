@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>US Inflation Calculator, 1850 to today</title>
+<meta name="description" content="Convert US dollars between any two years from 1850 to today, project future purchasing power, and explore 175 years of inflation data.">
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128200;</text></svg>">
+</head>
+<body>
+<div class="grain" aria-hidden="true"></div>
+
+<header class="masthead">
+  <div class="wrap masthead-inner">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">$</span>
+      <span class="brand-text">Inflation<em>Index</em></span>
+    </div>
+    <p class="masthead-note">US Consumer Price Index &middot; 1850&ndash;<span data-now>now</span></p>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <section class="hero">
+    <h1>The value of a dollar,<br><span class="hero-accent">across 175 years.</span></h1>
+    <p class="hero-sub">
+      Convert any amount between two years from 1850 to today, or look ahead and see
+      what inflation will do to it. Built on official CPI&nbsp;data from the
+      Bureau of Labor Statistics and the Federal Reserve.
+    </p>
+  </section>
+
+  <nav class="tabs" role="tablist" aria-label="Calculator mode">
+    <button class="tab is-active" role="tab" aria-selected="true" data-tab="convert">Convert</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="project">Look ahead</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="history">History</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="data">Data</button>
+  </nav>
+
+  <!-- ================= CONVERT ================= -->
+  <section class="panel is-active" data-panel="convert" role="tabpanel">
+    <div class="grid-2">
+      <div class="card">
+        <h2 class="card-title">Convert</h2>
+        <div class="field">
+          <label for="c-amount">Amount in dollars</label>
+          <div class="input-money">
+            <span aria-hidden="true">$</span>
+            <input id="c-amount" type="number" min="0" step="any" value="100" inputmode="decimal">
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label for="c-from">In the year</label>
+            <input id="c-from" type="number" class="year-input" inputmode="numeric" value="1913">
+          </div>
+          <div class="field">
+            <label for="c-to">Is worth in</label>
+            <input id="c-to" type="number" class="year-input" inputmode="numeric" value="2025">
+          </div>
+        </div>
+        <div class="quick" role="group" aria-label="Common spans">
+          <button class="chip" data-quick="1850">Since 1850</button>
+          <button class="chip" data-quick="1913">Since 1913</button>
+          <button class="chip" data-quick="1980">Since 1980</button>
+          <button class="chip" data-quick="2000">Since 2000</button>
+        </div>
+        <p class="hint" data-range-hint></p>
+      </div>
+
+      <div class="card result-card" aria-live="polite">
+        <h2 class="card-title">Result</h2>
+        <p class="result-big" data-c-result>&mdash;</p>
+        <p class="result-caption" data-c-caption></p>
+        <dl class="stat-grid">
+          <div><dt>Total inflation</dt><dd data-c-total>&mdash;</dd></div>
+          <div><dt>Change in value</dt><dd data-c-factor>&mdash;</dd></div>
+          <div><dt>Average per year</dt><dd data-c-annual>&mdash;</dd></div>
+          <div><dt>CPI index</dt><dd data-c-index>&mdash;</dd></div>
+        </dl>
+        <p class="flag" data-c-flag hidden></p>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="chart-head">
+        <h2 class="card-title">Price level, 1850&ndash;present</h2>
+        <p class="chart-note">CPI-U annual average, 1982&ndash;84 = 100</p>
+      </div>
+      <div class="chart-host" data-c-chart></div>
+    </div>
+  </section>
+
+  <!-- ================= PROJECT ================= -->
+  <section class="panel" data-panel="project" role="tabpanel">
+    <div class="grid-2">
+      <div class="card">
+        <h2 class="card-title">Look ahead</h2>
+        <div class="field">
+          <label for="p-amount">Amount in <span data-p-base-year>2025</span> dollars</label>
+          <div class="input-money">
+            <span aria-hidden="true">$</span>
+            <input id="p-amount" type="number" min="0" step="any" value="1000" inputmode="decimal">
+          </div>
+        </div>
+        <div class="field">
+          <label for="p-years">Years ahead: <output data-p-years-out>10</output></label>
+          <input id="p-years" type="range" min="1" max="50" value="10" step="1">
+        </div>
+        <div class="field">
+          <label for="p-rate">Assumed inflation: <output data-p-rate-out>2.5%</output> a year</label>
+          <input id="p-rate" type="range" min="0" max="10" value="2.5" step="0.1">
+          <div class="slider-scale"><span>0%</span><span>5%</span><span>10%</span></div>
+        </div>
+        <p class="hint">
+          This is an assumption you control, not a forecast. It is applied on top of the
+          last measured index value.
+        </p>
+      </div>
+
+      <div class="card result-card" aria-live="polite">
+        <h2 class="card-title">Projected</h2>
+        <p class="result-big" data-p-result>&mdash;</p>
+        <p class="result-caption" data-p-caption></p>
+        <dl class="stat-grid">
+          <div><dt>Nominal increase</dt><dd data-p-increase>&mdash;</dd></div>
+          <div><dt>Purchasing power left</dt><dd data-p-power>&mdash;</dd></div>
+          <div><dt>Compounded over</dt><dd data-p-span>&mdash;</dd></div>
+          <div><dt>Assumed rate</dt><dd data-p-rate-stat>&mdash;</dd></div>
+        </dl>
+      </div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="chart-head">
+        <h2 class="card-title">Purchasing power decay</h2>
+        <p class="chart-note">What <span data-p-legend-amount>$1,000</span> buys over time, in <span data-p-base-year>2025</span> dollars</p>
+      </div>
+      <div class="chart-host" data-p-chart></div>
+      <div class="callout">
+        <strong data-p-callout-title>&mdash;</strong>
+        <span data-p-callout-body></span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= HISTORY ================= -->
+  <section class="panel" data-panel="history" role="tabpanel">
+    <div class="stat-strip" data-h-strip></div>
+    <div class="card chart-card">
+      <div class="chart-head">
+        <h2 class="card-title">Annual inflation rate</h2>
+        <p class="chart-note">Percent change in CPI from the previous year. Bars below the line are deflation.</p>
+      </div>
+      <div class="chart-host" data-h-chart></div>
+    </div>
+    <div class="card">
+      <div class="chart-head">
+        <h2 class="card-title">Notable episodes</h2>
+        <p class="chart-note">Every year of deflation, and the sharpest single-year moves.</p>
+      </div>
+      <div class="episodes" data-h-episodes></div>
+    </div>
+  </section>
+
+  <!-- ================= DATA ================= -->
+  <section class="panel" data-panel="data" role="tabpanel">
+    <div class="card">
+      <div class="chart-head">
+        <h2 class="card-title">Where the numbers come from</h2>
+      </div>
+      <div class="sources" data-sources></div>
+    </div>
+    <div class="card">
+      <div class="chart-head">
+        <h2 class="card-title">Full series</h2>
+        <p class="chart-note">Annual averages, 1982&ndash;84 = 100.</p>
+      </div>
+      <div class="table-scroll">
+        <table class="data-table" data-table>
+          <thead><tr><th>Year</th><th>CPI</th><th>Inflation</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="method">
+    <h2>How the maths works</h2>
+    <div class="method-grid">
+      <div>
+        <h3>Converting between years</h3>
+        <p>
+          Value in year&nbsp;2 equals the amount in year&nbsp;1 multiplied by the ratio of
+          their index values: <code>amount &times; (index<sub>2</sub> / index<sub>1</sub>)</code>.
+          This is the same method the Bureau of Labor Statistics publishes.
+        </p>
+      </div>
+      <div>
+        <h3>Pre-1913 figures</h3>
+        <p>
+          The official CPI begins in 1913. Earlier years use historical estimates
+          rescaled to the modern index base, so the two series join without a step.
+          Treat them as close approximations, not precise measurements.
+        </p>
+      </div>
+      <div>
+        <h3>Projections</h3>
+        <p>
+          Future values compound your chosen rate annually from the last measured
+          index value. Inflation is volatile, so a single rate is a simplifying
+          assumption. Test a few rates to see the range of outcomes.
+        </p>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <p>
+      Data: US Bureau of Labor Statistics (CPI-U, 1913&ndash;present) and the Federal Reserve
+      Bank of Minneapolis (historical estimates, 1850&ndash;1912). Figures before 1913 are
+      estimates. Not financial advice.
+    </p>
+    <p class="footer-fine" data-footer-meta></p>
+  </div>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

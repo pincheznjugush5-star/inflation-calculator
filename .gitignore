@@ -1,0 +1,11 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Fetched source data (rebuildable with tools/fetch_cpi.py)
+.cache/
+
+# Editors / OS
+.DS_Store
+.idea/
+.vscode/
