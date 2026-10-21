@@ -28,6 +28,7 @@ from .data import (
     DEFAULT_FORWARD_RATE,
     country_list,
     current_year,
+    freshness,
     get_country,
     load_series,
     world_meta,
@@ -94,11 +95,17 @@ def api_meta(series, params: dict) -> dict:
         "last_year": series.last_year,
         "current_year": current_year(),
         "default_forward_rate": DEFAULT_FORWARD_RATE,
+        "freshness": freshness().summary(),
         "meta": {
             **world_meta(),
             "caveat": series.source and world_meta().get("caveat", ""),
         },
     }
+
+
+def api_freshness(series, params: dict) -> dict:
+    """Data vintage, and whether a refresh is overdue."""
+    return freshness().summary()
 
 
 def api_series(series, params: dict) -> dict:
@@ -170,6 +177,7 @@ def _check_years(series, from_year: int, to_year: int) -> None:
 
 ROUTES = {
     "/api/countries": api_countries,
+    "/api/freshness": api_freshness,
     "/api/meta": api_meta,
     "/api/series": api_series,
     "/api/convert": api_convert,

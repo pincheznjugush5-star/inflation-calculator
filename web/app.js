@@ -440,6 +440,49 @@ function renderData() {
   $("[data-footer-meta]").textContent =
     `Generated ${meta.generated_utc || "—"}. ${country.short_name || country.name}: ${country.first_year}–${country.last_year}, ` +
     `${state.stats.observations} annual averages, index base ${country.index_base}.`;
+
+  renderFreshness(state.meta.freshness);
+}
+
+/* ------------------------------ data freshness ------------------------------ */
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July",
+  "August", "September", "October", "November", "December"];
+
+function formatDate(iso) {
+  const [y, m, d] = String(iso).split("-").map(Number);
+  if (!y || !m || !d) return iso;
+  return `${d} ${MONTHS[m - 1]} ${y}`;
+}
+
+function formatAge(days) {
+  if (days == null) return null;
+  if (days <= 0) return "today";
+  if (days === 1) return "yesterday";
+  if (days < 60) return `${days} days ago`;
+  const months = Math.round(days / 30);
+  if (months < 24) return `${months} months ago`;
+  return `${Math.round(days / 365)} years ago`;
+}
+
+function renderFreshness(f) {
+  const el = $("[data-freshness]");
+  if (!f) {
+    el.hidden = true;
+    return;
+  }
+  el.hidden = false;
+  el.classList.toggle("is-stale", Boolean(f.stale));
+
+  const refreshed = f.generated_on
+    ? `refreshed ${formatDate(f.generated_on)}${f.age_days != null ? ` (${formatAge(f.age_days)})` : ""}`
+    : "refresh date unknown";
+
+  el.textContent = f.stale
+    ? `Figures current through ${f.newest_year}, ${refreshed}. ` +
+      `Annual data for ${f.expected_year} should now be available — ` +
+      `run tools/refresh.py to update.`
+    : `Figures current through ${f.newest_year}, ${refreshed}.`;
 }
 
 /* ------------------------------ country handling ------------------------------ */

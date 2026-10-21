@@ -157,5 +157,55 @@ fetch tools to refresh them; responses are cached in `.cache/`.
 
 ## Licence and disclaimer
 
-Data is public domain or publicly published by the respective agencies. This tool
-is for information only and is not financial advice.
+The code is released under the MIT License (see `LICENSE`).
+
+The bundled data is not covered by that licence. It is redistributed under the
+terms of its sources:
+
+| Source | Terms |
+| --- | --- |
+| US Bureau of Labor Statistics (CPI-U) | US government work, public domain |
+| Federal Reserve Bank of Minneapolis | Publicly published historical estimates |
+| World Bank (CPI, `FP.CPI.TOTL`) | [CC BY 4.0](https://datacatalog.worldbank.org/public-licenses) — attribution required |
+| Unicode CLDR (country display names) | [Unicode License v3](https://www.unicode.org/license.txt) — notice required |
+| GeoNames (capital, continent, TLD, languages) | [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/) — credit required |
+| `datasets/country-codes` | [ODC-PDDL-1.0](https://opendatacommons.org/licenses/pddl/1.0/) for the maintainers' own work |
+
+The World Bank requires attribution, which the app displays in its footer and
+in the Data panel, and which is recorded in `data/countries.json` under
+`meta.sources`. If you redistribute the data, keep those attributions.
+
+Two deliberate exclusions, because the upstream licence does not permit
+shipping them:
+
+- The UNTERM name columns in `datasets/country-codes` are **restricted**. The
+  UN terms of use allow personal, non-commercial use only, with no right to
+  redistribute or create derivative works, and the upstream project says so
+  explicitly. Country names therefore come from the Unicode CLDR instead,
+  which is redistributable. This is also why the names read "United Kingdom"
+  rather than "United Kingdom of Great Britain and Northern Ireland".
+- ISO's rights in the country and currency *codes* are unclear. The codes are
+  used as published and are not modified or relicensed.
+
+Notice for the Unicode CLDR data:
+
+```
+Copyright © 1991-2026 Unicode, Inc. All rights reserved.
+Distributed under the Terms of Use in https://www.unicode.org/copyright.html
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of the Unicode data files and any associated documentation (the "Data Files")
+or Unicode software and any associated documentation (the "Software") to deal
+in the Data Files or Software without restriction, including without
+limitation the rights to use, copy, modify, merge, publish, distribute, and/or
+sell copies of the Data Files or Software, and to permit persons to whom the
+Data Files or Software are furnished to do so, provided that either (a) this
+copyright and permission notice appear with all copies of the Data Files or
+Software, or (b) this copyright and permission notice appear in associated
+Documentation.
+```
+
+Not endorsed by or affiliated with the United Nations, ISO, SIX Group, the
+World Bank, the Bureau of Labor Statistics, GeoNames, or Unicode, Inc.
+
+This tool is for information only and is not financial advice.

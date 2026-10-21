@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime, timezone
 from functools import lru_cache
 from pathlib import Path
 
@@ -164,3 +164,72 @@ def resolve_index(series: Series, year: int, forward_rate: float = DEFAULT_FORWA
 
 def current_year() -> int:
     return date.today().year
+
+
+def expected_data_year() -> int:
+    """The newest year that should have a complete annual average.
+
+    An annual average is only published after the year ends, so the current
+    calendar year is never complete and the previous year is the target.
+    """
+    return current_year() - 1
+
+
+@dataclass(frozen=True)
+class Freshness:
+    """How current the shipped data is.
+
+    The data files are a snapshot rebuilt by the fetch tools, so the app can
+    drift out of date between refreshes. This makes that drift visible instead
+    of leaving it implied by a timestamp in the footer.
+    """
+
+    generated_utc: str
+    generated_on: date | None
+    age_days: int | None
+    newest_year: int
+    expected_year: int
+
+    @property
+    def lag_years(self) -> int:
+        """Years by which the newest data trails what should be available."""
+        return max(0, self.expected_year - self.newest_year)
+
+    @property
+    def stale(self) -> bool:
+        return self.lag_years > 0
+
+    def summary(self) -> dict:
+        return {
+            "generated_utc": self.generated_utc,
+            "generated_on": self.generated_on.isoformat() if self.generated_on else None,
+            "age_days": self.age_days,
+            "newest_year": self.newest_year,
+            "expected_year": self.expected_year,
+            "lag_years": self.lag_years,
+            "stale": self.stale,
+        }
+
+
+def freshness() -> Freshness:
+    """Data vintage across every country, and whether a refresh is overdue."""
+    countries, meta = _registry()
+    newest_year = max(series.last_year for series in countries.values())
+
+    raw = meta.get("generated_utc", "") or ""
+    generated_on = None
+    if raw:
+        try:
+            generated_on = datetime.strptime(raw, "%Y-%m-%dT%H:%M:%SZ").replace(
+                tzinfo=timezone.utc
+            ).date()
+        except ValueError:
+            generated_on = None
+
+    return Freshness(
+        generated_utc=raw,
+        generated_on=generated_on,
+        age_days=(date.today() - generated_on).days if generated_on else None,
+        newest_year=newest_year,
+        expected_year=expected_data_year(),
+    )

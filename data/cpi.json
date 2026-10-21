@@ -2,7 +2,7 @@
  "meta": {
   "title": "US Consumer Price Index, annual averages, 1850-present",
   "index_base": "1982-84 = 100 (BLS CPI-U); earlier years rescaled to match",
-  "generated_utc": "2026-10-21T10:38:55Z",
+  "generated_utc": "2026-10-21T11:18:59Z",
   "splice_year": 1913,
   "sources": [
    {

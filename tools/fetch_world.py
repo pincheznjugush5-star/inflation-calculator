@@ -39,42 +39,28 @@ COUNTRY_CODES_URL = (
 )
 UA = "Mozilla/5.0 (X11; Linux x86_64) inflation-calculator/1.0"
 
-# The UNTERM short names are formal to the point of being unwieldy in a
-# dropdown ("United Kingdom of Great Britain and Northern Ireland"). These are
-# display names for the countries whose formal name needs shortening, or where
-# the common English name differs from the formal one. The formal name is kept
-# in the data as `name`; the interface shows `short_name`.
+# Names for the interface. The canonical `name` is the CLDR display name, and
+# `short_name` is a curated override for the handful of names that are awkward
+# in a dropdown: CLDR abbreviates some ("UK", "US"), uses ampersands
+# ("Antigua & Barbuda"), or separates disambiguators with a dash
+# ("Congo - Kinshasa"). Everything else keeps its CLDR name.
+#
+# Both come from CLDR rather than the UNTERM/official columns, because the
+# upstream country-codes file marks those columns as restricted: the UN terms
+# of use allow no redistribution or derivative works, so they are not shipped.
+# CLDR is redistributable under the Unicode licence with a notice, which
+# ATTRIBUTION covers (see the README).
 DISPLAY_NAMES = {
-    "BOL": "Bolivia",
-    "BRN": "Brunei",
-    "CAF": "Central African Republic",
+    "ATG": "Antigua and Barbuda",
     "COD": "DR Congo",
     "COG": "Congo",
-    "CZE": "Czechia",
-    "EGY": "Egypt",
-    "FSM": "Micronesia",
+    "CIV": "Ivory Coast",
     "GBR": "United Kingdom",
-    "HKG": "Hong Kong",
-    "IRN": "Iran",
     "KNA": "St Kitts and Nevis",
-    "KOR": "South Korea",
-    "LAO": "Laos",
-    "LCA": "St Lucia",
-    "MAC": "Macao",
-    "MDA": "Moldova",
-    "MKD": "North Macedonia",
-    "PRK": "North Korea",
-    "RUS": "Russia",
     "STP": "Sao Tome and Principe",
-    "SXM": "Sint Maarten",
-    "SYR": "Syria",
-    "TLS": "Timor-Leste",
-    "TWN": "Taiwan",
-    "TZA": "Tanzania",
-    "VEN": "Venezuela",
+    "TTO": "Trinidad and Tobago",
+    "USA": "United States",
     "VCT": "St Vincent and the Grenadines",
-    "VNM": "Vietnam",
-    "XKX": "Kosovo",
 }
 
 # Currency symbols for common currencies; anything not listed falls back to the
@@ -130,6 +116,12 @@ def _cache(name: str, fetch):
     return data
 
 
+# Bumped whenever the parsing below changes shape. The cache holds parsed
+# output, not raw responses, so a stale entry would otherwise be served as if
+# it reflected the current logic.
+CACHE_VERSION = 2
+
+
 def fetch_country_meta() -> dict[str, dict]:
     """ISO country -> {iso2, name, currency_code, currency_name}."""
 
@@ -141,17 +133,11 @@ def fetch_country_meta() -> dict[str, dict]:
             iso3 = (row.get("ISO3166-1-Alpha-3") or "").strip()
             if len(iso3) != 3:
                 continue
-            name = (
-                row.get("UNTERM English Short")
-                or row.get("UNTERM English Formal")
-                or row.get("official_name_en")
-                or iso3
-            ).strip()
-            # Trim the " (the)" / " *" suffixes the UNTERM names carry.
-            name = name.rstrip("*").strip()
-            for suffix in (" (the)",):
-                if name.endswith(suffix):
-                    name = name[: -len(suffix)]
+            # The CLDR display name is the customary English short form
+            # ("South Korea", "United Kingdom") and is redistributable. The
+            # UNTERM and official_name columns are the formal names but are
+            # restricted upstream, so they are deliberately not used.
+            name = (row.get("CLDR display name") or "").strip() or iso3
             out[iso3] = {
                 "iso2": (row.get("ISO3166-1-Alpha-2") or "").strip(),
                 "name": name,
@@ -161,7 +147,7 @@ def fetch_country_meta() -> dict[str, dict]:
             }
         return out
 
-    return _cache("country_meta.json", _do)
+    return _cache(f"country_meta.v{CACHE_VERSION}.json", _do)
 
 
 def fetch_world_cpi() -> dict[str, dict[int, float]]:
@@ -180,7 +166,7 @@ def fetch_world_cpi() -> dict[str, dict[int, float]]:
             out.setdefault(iso3, {})[rec["date"]] = float(value)
         return out
 
-    cached = _cache("world_cpi.json", _do)
+    cached = _cache(f"world_cpi.v{CACHE_VERSION}.json", _do)
     return {iso3: {int(y): v for y, v in years.items()} for iso3, years in cached.items()}
 
 
@@ -275,6 +261,21 @@ def build() -> dict:
                     "series": "ISO 3166 / ISO 4217",
                     "detail": "Country and currency code mapping",
                     "url": COUNTRY_CODES_URL,
+                },
+                {
+                    "name": "Unicode CLDR",
+                    "series": "cldr-localenames-full",
+                    "detail": (
+                        "Country display names. Redistributed under the Unicode "
+                        "Licence v3; the copyright notice is in the README."
+                    ),
+                    "url": "https://github.com/unicode-org/cldr-json",
+                },
+                {
+                    "name": "GeoNames",
+                    "series": "countryInfo",
+                    "detail": "Capital, continent, TLD and language columns, via country-codes",
+                    "url": "https://www.geonames.org/",
                 },
             ],
             "caveat": (

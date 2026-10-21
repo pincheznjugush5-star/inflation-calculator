@@ -5,6 +5,7 @@ Run with:  python3 -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import json
 import unittest
 
 from inflation.calc import (
@@ -20,6 +21,9 @@ from inflation.data import (
     DEFAULT_FORWARD_RATE,
     country_codes,
     country_list,
+    current_year,
+    expected_data_year,
+    freshness,
     get_country,
     load_series,
     resolve_index,
@@ -104,8 +108,8 @@ class WorldDataTests(unittest.TestCase):
         self.assertEqual(get_country("GBR").iso3, get_country("GB").iso3)
 
     def test_short_name_is_usable_and_present(self):
-        # The dropdown shows short_name, so it must never be blank, and formal
-        # names long enough to break the layout must have been shortened.
+        # The dropdown shows short_name, so it must never be blank, and no
+        # entry may be long enough to break the layout.
         for iso3 in country_codes():
             with self.subTest(country=iso3):
                 c = get_country(iso3)
@@ -113,6 +117,18 @@ class WorldDataTests(unittest.TestCase):
                 self.assertLessEqual(len(c.display_name), 32, f"{iso3} still unwieldy")
         self.assertEqual(get_country("GBR").display_name, "United Kingdom")
         self.assertEqual(get_country("USA").display_name, "United States")
+
+    def test_names_carry_no_restricted_upstream_artifacts(self):
+        # The UNTERM/official columns are restricted upstream and must not be
+        # shipped. Their names carry tell-tale suffixes and commas, so this
+        # catches a regression that reintroduces them.
+        for iso3 in country_codes():
+            for field in ("name", "short_name"):
+                value = getattr(get_country(iso3), field)
+                with self.subTest(country=iso3, field=field):
+                    self.assertNotIn("(the)", value)
+                    self.assertFalse(value.endswith("*"))
+                    self.assertNotIn("Special Administrative Region", value)
 
     def test_unknown_country_raises(self):
         with self.assertRaises(KeyError):
@@ -318,6 +334,57 @@ class StatsTests(unittest.TestCase):
             average_inflation(self.series, 2000, 2000)
 
 
+class FreshnessTests(unittest.TestCase):
+    """The app must be able to tell when its shipped data is out of date."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.series = load_series()
+
+    def test_freshness_reports_a_generation_date(self):
+        f = freshness()
+        self.assertTrue(f.generated_utc, "data must record when it was built")
+        self.assertIsNotNone(f.generated_on)
+        self.assertIsNotNone(f.age_days)
+        self.assertGreaterEqual(f.age_days, 0)
+
+    def test_expected_year_is_the_previous_calendar_year(self):
+        # An annual average is only complete once the year has ended.
+        self.assertEqual(expected_data_year(), current_year() - 1)
+
+    def test_newest_year_spans_all_countries(self):
+        f = freshness()
+        newest = max(c.last_year for c in (get_country(i) for i in country_codes()))
+        self.assertEqual(f.newest_year, newest)
+
+    def test_lag_and_stale_agree(self):
+        f = freshness()
+        self.assertEqual(f.lag_years, max(0, f.expected_year - f.newest_year))
+        self.assertEqual(f.stale, f.lag_years > 0)
+
+    def test_summary_is_json_safe(self):
+        s = freshness().summary()
+        json.dumps(s)  # must not raise
+        self.assertIn("stale", s)
+        self.assertIn("generated_on", s)
+
+    def test_shipped_data_is_not_stale(self):
+        # If this fails, the committed data needs refreshing. Run tools/refresh.py.
+        f = freshness()
+        self.assertFalse(
+            f.stale,
+            f"data ends {f.newest_year} but {f.expected_year} is available; refresh the data",
+        )
+
+    def test_api_exposes_freshness(self):
+        from inflation.server import api_freshness, api_meta
+
+        payload = api_freshness(self.series, {})
+        self.assertIn("stale", payload)
+        self.assertIn("newest_year", payload)
+        self.assertIn("freshness", api_meta(self.series, {}))
+
+
 class ServerTests(unittest.TestCase):
     """The HTTP layer should validate input and shape responses correctly."""
 
@@ -336,7 +403,14 @@ class ServerTests(unittest.TestCase):
         payload = self.api_meta(self.series, {})
         self.assertEqual(payload["first_year"], 1850)
         self.assertEqual(payload["last_year"], self.series.last_year)
-        self.assertEqual(len(payload["meta"]["sources"]), 2)
+        # Every source that requires attribution must be credited. The World
+        # Bank (CC BY 4.0) and the Unicode CLDR (Unicode Licence v3) are the
+        # two with obligations; both must appear.
+        names = {s["name"] for s in payload["meta"]["sources"]}
+        self.assertIn("World Bank", names)
+        self.assertIn("Unicode CLDR", names)
+        for source in payload["meta"]["sources"]:
+            self.assertTrue(source.get("url"), f"{source['name']} has no source URL")
 
     def test_convert_defaults_to_current_year(self):
         payload = self.api_convert(self.series, {"amount": "100", "from_year": "1950"})

@@ -13,11 +13,16 @@ Python standard library only, no build step, no front-end dependencies.
 ```bash
 python3 -m inflation.server --port 12000      # run the app
 python3 -m unittest discover -s tests -v      # test suite (must stay green)
-python3 tools/fetch_cpi.py                    # refresh the US series
-python3 tools/fetch_world.py                  # refresh all other countries
+python3 tools/refresh.py                      # refresh all data and verify
+python3 tools/refresh.py --check              # report freshness only, no writes
+python3 tools/fetch_cpi.py                    # refresh the US series alone
+python3 tools/fetch_world.py                  # refresh all other countries alone
 ```
 
-There is no packaging, linting, or CI configuration. Run the tests directly.
+GitHub Actions runs the suite on every push and pull request
+(`.github/workflows/ci.yml`) and refreshes the data weekly
+(`.github/workflows/refresh-data.yml`). The refresh job commits only when the
+data actually changed.
 
 ## Layout and responsibilities
 
@@ -30,6 +35,7 @@ There is no packaging, linting, or CI configuration. Run the tests directly.
 | `inflation/server.py` | HTTP layer only. Validates input, resolves the country, calls `calc`, serialises JSON. |
 | `tools/fetch_cpi.py` | Fetch, splice, and validate the US series. |
 | `tools/fetch_world.py` | Fetch every other country's index plus currency metadata. |
+| `tools/refresh.py` | Orchestrate both fetchers, run the tests, report freshness. |
 | `web/` | Front end. `app.js` contains hand-rolled SVG charting. |
 | `tests/` | Unit tests. |
 
@@ -69,6 +75,24 @@ The accuracy of this tool is its whole point. When touching data or arithmetic:
   not a forecast.
 - Coverage differs per country. Asking for a year outside a country's range must be
   a clear error, never a silent extrapolation.
+
+## Data licensing (important)
+
+The bundled data is redistributed, so its licence terms constrain the code rather
+than being an afterthought. See the README for the full notices.
+
+- Country and currency **names** come from the Unicode CLDR. Do not reintroduce
+  the `UNTERM ...` or `official_name_en` columns from `datasets/country-codes`:
+  the upstream project marks them restricted, because the UN terms of use allow
+  no redistribution or derivative works. A test guards the shipped names against
+  the tell-tale markers of those columns ("(the)", trailing "*", "Special
+  Administrative Region").
+- The World Bank (CC BY 4.0) and the Unicode CLDR (Unicode Licence v3) both
+  require attribution. Keep their entries in `data/countries.json` under
+  `meta.sources` and in the README.
+- `_cache` in `tools/fetch_world.py` stores *parsed* output, not raw responses.
+  Bump `CACHE_VERSION` whenever the parsing changes shape, or a stale entry will
+  be served as though it reflected the new logic.
 
 ## Testing expectations
 
