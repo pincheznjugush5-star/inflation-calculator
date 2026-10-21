@@ -1,8 +1,11 @@
-# US Inflation Calculator
+# Inflation Calculator
 
-Convert US dollars between any two years from **1850 to today**, and look forward
-to see what inflation does to your money. Built on official Consumer Price Index
-data from the Bureau of Labor Statistics and the Federal Reserve Bank of Minneapolis.
+Convert money between any two years, look ahead at what inflation does to it, and
+explore inflation history. Covers **190 countries**, with the United States reaching
+back to 1850.
+
+Built on official price index data: the US Bureau of Labor Statistics, the Federal
+Reserve Bank of Minneapolis, and the World Bank.
 
 No third-party dependencies. Python 3.9+ standard library only, and a
 dependency-free front end, so it runs anywhere and works offline.
@@ -13,26 +16,28 @@ dependency-free front end, so it runs anywhere and works offline.
 python3 -m inflation.server --port 12000
 ```
 
-Then open <http://localhost:12000>.
+Then open <http://localhost:12000>. Add `?country=JPN` (or any ISO 3166 code) to
+link straight to a country.
 
 ### Other commands
 
 ```bash
 python3 -m unittest discover -s tests -v   # run the test suite
-python3 tools/fetch_cpi.py                 # refresh data/cpi.json from source
+python3 tools/fetch_cpi.py                 # refresh the US series
+python3 tools/fetch_world.py               # refresh every other country
 ```
 
 ## What it does
 
 | Mode | What it answers |
 | --- | --- |
-| **Convert** | "What is $X of year A worth in year B?" |
-| **Look ahead** | "What will $X be worth in N years, at an assumed rate?" |
-| **History** | Every annual inflation rate since 1850, plus deflation episodes |
+| **Convert** | "What is 100 of year A worth in year B?" |
+| **Look ahead** | "What will it be worth in N years, at an assumed rate?" |
+| **History** | Every annual inflation rate, plus deflation episodes |
 | **Data** | Full series and source provenance |
 
 Conversions work in both directions, so you can also ask what an earlier year's
-money a modern amount corresponds to.
+money corresponds to. Pick the country from the selector in the header.
 
 ## How the maths works
 
@@ -55,56 +60,80 @@ index value** rather than from a trend line fitted to history:
 index[future] = index[last_observed] × (1 + assumed_rate) ** (future - last_observed)
 ```
 
-The assumed rate is a user-controlled input, not a forecast. The default is 2.5%.
+The assumed rate is a user-controlled input, not a forecast. The default is 2.5%,
+and the interface offers each country's own historical average as a one-click
+alternative.
 
 ## Data sources
 
-The series is a splice of two sources, joined at 1913.
-
-| Coverage | Source | Notes |
+| Coverage | Countries | Source |
 | --- | --- | --- |
-| 1913 – present | US Bureau of Labor Statistics, CPI-U (series `CUUR0000SA0`) | Official annual averages, via the BLS public API |
-| 1850 – 1912 | Federal Reserve Bank of Minneapolis, *Consumer Price Index, 1800-* | Historical estimates, rescaled to the modern index base |
+| 1850 – present | United States | BLS CPI-U (`CUUR0000SA0`) for 1913+, Minneapolis Fed historical estimates before that |
+| 1960 – present (mostly) | 189 others | World Bank `FP.CPI.TOTL`, consumer price index, 2010 = 100 |
 
-The Minneapolis Fed table uses a different index base, so its values are rescaled
-by the ratio of the two series' 1913 values. The join is therefore exact by
-construction and introduces no artificial step in the inflation rate at the seam.
-This is verified by a test.
+The United States keeps its own long series because the official BLS data is higher
+quality and reaches 110 years further back than the World Bank's.
 
-Every build re-checks the merged series against known official values (1913, 1929,
-1945, 1967, 1980, 2000, 2020) and fails loudly on any drift.
+For the pre-1913 US years, the Minneapolis Fed table uses a different index base,
+so its values are rescaled by the ratio of the two series' 1913 values. The join is
+exact by construction and introduces no artificial step in the inflation rate at the
+seam; a test asserts this.
+
+Both pipelines validate against known official values and fail loudly on drift.
+`tools/fetch_world.py` additionally checks that every country has a usable span, a
+currency code, and strictly positive index values.
+
+### Independent verification
+
+The World Bank publishes a US series derived from the same BLS data. Its year-over-
+year rates reproduce the official BLS rates exactly for the years checked
+(2000: 3.36%, 2010: 1.64%, 2021: 4.70%, 2022: 8.00%), which is asserted in the test
+suite. Spot checks against national statistics for the UK, Japan, and India also
+agree.
 
 ### Accuracy caveats
 
-- **Pre-1913 figures are estimates.** They are reconstructed from historical price
-  data and are materially less precise than the official CPI-U. Independent
-  sources differ by roughly 1–7% for individual pre-1913 years. Treat them as
-  close approximations suitable for rough comparisons, not precise measurements.
-- **Annual averages only.** This does not do month-by-month or
-  inflation-adjusted-in-real-time calculations.
-- **One index, one basket.** CPI-U measures an urban consumer's basket. Your own
+- **Pre-1913 US figures are estimates.** Independent sources differ by roughly 1–7%
+  for individual pre-1913 years. Treat them as close approximations, not precise
+  measurements. They are marked with an asterisk in the data table.
+- **Coverage varies by country.** Most series start around 1960; some start later.
+  Each country's page states its own range, and asking for a year outside it is a
+  clear error rather than a silent guess.
+- **Cross-country comparisons are approximate.** Each index measures a different
+  national basket of goods, so comparing "US inflation" to "Indian inflation" is
+  comparing two different things measured two different ways.
+- **Redenominations.** Several countries (Brazil, Peru, Angola) redenominated their
+  currency during hyperinflation. Because prices and the currency were redenominated
+  together, the index ratio still gives the correct real change, but the nominal
+  number is expressed in today's units.
+- **One index, one basket.** CPI measures an average urban consumer. Your own
   experience will differ, especially for housing, healthcare, and education, which
-  have outrun the headline index.
-- **Projections are assumptions.** Inflation is volatile and no single rate
-  predicts it. Try a range of rates to see the spread.
+  have outrun headline indices almost everywhere.
+- **Projections are assumptions.** Inflation is volatile and no single rate predicts
+  it. Try a range of rates to see the spread.
 
 ## JSON API
 
-All endpoints are `GET` and return JSON.
+All endpoints are `GET` and return JSON. Every endpoint accepts an optional
+`country` parameter (ISO 3166 alpha-3 or alpha-2); it defaults to `USA`.
 
 | Endpoint | Parameters | Returns |
 | --- | --- | --- |
-| `/api/meta` | – | Coverage, default rate, source provenance |
-| `/api/series` | – | Full annual index |
-| `/api/convert` | `amount`, `from_year`, `to_year`, `forward_rate` | Converted value, factor, total and annualized change |
-| `/api/project` | `amount`, `base_year`, `end_year`, `forward_rate` | Year-by-year projected values |
-| `/api/stats` | – | Summary statistics and full year-over-year series |
+| `/api/countries` | – | Every country with its currency and coverage |
+| `/api/meta` | `country` | Coverage, default rate, source provenance |
+| `/api/series` | `country` | Full annual index |
+| `/api/convert` | `country`, `amount`, `from_year`, `to_year`, `forward_rate` | Converted value, factor, total and annualized change |
+| `/api/project` | `country`, `amount`, `base_year`, `end_year`, `forward_rate` | Year-by-year projected values |
+| `/api/stats` | `country` | Summary statistics and full year-over-year series |
 
-Example:
+Examples:
 
 ```bash
 curl "http://localhost:12000/api/convert?amount=100&from_year=1913&to_year=2025"
-# {"result": 3251.94, "factor": 32.52, "total_change": 31.52, "annualized": 0.0316, ...}
+# {"result": 3251.95, "factor": 32.52, "total_change": 31.52, ...}
+
+curl "http://localhost:12000/api/convert?country=GBR&amount=100&from_year=1970&to_year=2024"
+# {"result": 1579.17, "factor": 15.79, ...}
 ```
 
 Invalid input returns `400` with an `{"error": "..."}` body.
@@ -112,18 +141,19 @@ Invalid input returns `400` with an `{"error": "..."}` body.
 ## Project layout
 
 ```
-data/cpi.json          merged annual index + provenance metadata
-inflation/data.py      series loading and index resolution (incl. projection)
+data/cpi.json          US series (1850+), built by fetch_cpi.py
+data/countries.json    every country: index, currency, coverage
+inflation/data.py      country registry, series loading, index resolution
 inflation/calc.py      conversion, projection, statistics
 inflation/server.py    HTTP server and JSON API
-tools/fetch_cpi.py     fetches, splices, and validates the data
+tools/fetch_cpi.py     fetches and splices the US series
+tools/fetch_world.py   fetches every other country plus currency metadata
 web/                   front end (HTML, CSS, hand-rolled SVG charts)
 tests/                 unit tests
 ```
 
-`data/cpi.json` is committed so the app works without network access. Re-run
-`tools/fetch_cpi.py` to refresh it; results are cached in `.cache/` so a refresh
-survives API rate limits.
+Both data files are committed so the app works without network access. Re-run the
+fetch tools to refresh them; responses are cached in `.cache/`.
 
 ## Licence and disclaimer
 

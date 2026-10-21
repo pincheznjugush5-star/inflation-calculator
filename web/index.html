@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>US Inflation Calculator, 1850 to today</title>
-<meta name="description" content="Convert US dollars between any two years from 1850 to today, project future purchasing power, and explore 175 years of inflation data.">
+<title>Inflation Calculator, 1850 to today, worldwide</title>
+<meta name="description" content="Convert money between any two years for 190 countries, project future purchasing power, and explore inflation history. Official CPI data.">
 <link rel="stylesheet" href="/styles.css">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128200;</text></svg>">
 </head>
@@ -17,19 +17,24 @@
       <span class="brand-mark" aria-hidden="true">$</span>
       <span class="brand-text">Inflation<em>Index</em></span>
     </div>
-    <p class="masthead-note">US Consumer Price Index &middot; 1850&ndash;<span data-now>now</span></p>
+    <div class="country-picker">
+      <label for="country" class="sr-only">Country</label>
+      <select id="country" aria-label="Choose a country"></select>
+      <span class="picker-caret" aria-hidden="true">▾</span>
+    </div>
   </div>
 </header>
 
 <main class="wrap">
 
   <section class="hero">
-    <h1>The value of a dollar,<br><span class="hero-accent">across 175 years.</span></h1>
+    <h1>The value of money,<br><span class="hero-accent">across generations.</span></h1>
     <p class="hero-sub">
-      Convert any amount between two years from 1850 to today, or look ahead and see
-      what inflation will do to it. Built on official CPI&nbsp;data from the
-      Bureau of Labor Statistics and the Federal Reserve.
+      Convert any amount between two years, or look ahead and see what inflation
+      does to it. Built on official price index data for
+      <strong data-country-count>190</strong> countries.
     </p>
+    <p class="hero-coverage" data-coverage></p>
   </section>
 
   <nav class="tabs" role="tablist" aria-label="Calculator mode">
@@ -45,9 +50,9 @@
       <div class="card">
         <h2 class="card-title">Convert</h2>
         <div class="field">
-          <label for="c-amount">Amount in dollars</label>
+          <label for="c-amount">Amount in <span data-c-currency-name>US dollars</span></label>
           <div class="input-money">
-            <span aria-hidden="true">$</span>
+            <span aria-hidden="true" data-c-symbol>$</span>
             <input id="c-amount" type="number" min="0" step="any" value="100" inputmode="decimal">
           </div>
         </div>
@@ -62,8 +67,8 @@
           </div>
         </div>
         <div class="quick" role="group" aria-label="Common spans">
-          <button class="chip" data-quick="1850">Since 1850</button>
-          <button class="chip" data-quick="1913">Since 1913</button>
+          <button class="chip" data-quick="first">Full history</button>
+          <button class="chip" data-quick="1960">Since 1960</button>
           <button class="chip" data-quick="1980">Since 1980</button>
           <button class="chip" data-quick="2000">Since 2000</button>
         </div>
@@ -78,7 +83,7 @@
           <div><dt>Total inflation</dt><dd data-c-total>&mdash;</dd></div>
           <div><dt>Change in value</dt><dd data-c-factor>&mdash;</dd></div>
           <div><dt>Average per year</dt><dd data-c-annual>&mdash;</dd></div>
-          <div><dt>CPI index</dt><dd data-c-index>&mdash;</dd></div>
+          <div><dt>Index <span data-c-base></span></dt><dd data-c-index>&mdash;</dd></div>
         </dl>
         <p class="flag" data-c-flag hidden></p>
       </div>
@@ -86,8 +91,8 @@
 
     <div class="card chart-card">
       <div class="chart-head">
-        <h2 class="card-title">Price level, 1850&ndash;present</h2>
-        <p class="chart-note">CPI-U annual average, 1982&ndash;84 = 100</p>
+        <h2 class="card-title">Price level, <span data-c-chart-span></span></h2>
+        <p class="chart-note">Consumer price index, <span data-c-base></span></p>
       </div>
       <div class="chart-host" data-c-chart></div>
     </div>
@@ -99,9 +104,9 @@
       <div class="card">
         <h2 class="card-title">Look ahead</h2>
         <div class="field">
-          <label for="p-amount">Amount in <span data-p-base-year>2025</span> dollars</label>
+          <label for="p-amount">Amount in <span data-p-base-year>2025</span> money</label>
           <div class="input-money">
-            <span aria-hidden="true">$</span>
+            <span aria-hidden="true" data-p-symbol>$</span>
             <input id="p-amount" type="number" min="0" step="any" value="1000" inputmode="decimal">
           </div>
         </div>
@@ -111,12 +116,13 @@
         </div>
         <div class="field">
           <label for="p-rate">Assumed inflation: <output data-p-rate-out>2.5%</output> a year</label>
-          <input id="p-rate" type="range" min="0" max="10" value="2.5" step="0.1">
-          <div class="slider-scale"><span>0%</span><span>5%</span><span>10%</span></div>
+          <input id="p-rate" type="range" min="0" max="15" value="2.5" step="0.1">
+          <div class="slider-scale"><span>0%</span><span>7.5%</span><span>15%</span></div>
         </div>
         <p class="hint">
           This is an assumption you control, not a forecast. It is applied on top of the
-          last measured index value.
+          last measured index value. Use <button class="linkish" data-use-historical>the historical average</button>
+          for this country (<span data-p-hist-rate>—</span>).
         </p>
       </div>
 
@@ -136,7 +142,7 @@
     <div class="card chart-card">
       <div class="chart-head">
         <h2 class="card-title">Purchasing power decay</h2>
-        <p class="chart-note">What <span data-p-legend-amount>$1,000</span> buys over time, in <span data-p-base-year>2025</span> dollars</p>
+        <p class="chart-note">What <span data-p-legend-amount>$1,000</span> buys over time, in <span data-p-base-year>2025</span> money</p>
       </div>
       <div class="chart-host" data-p-chart></div>
       <div class="callout">
@@ -152,7 +158,7 @@
     <div class="card chart-card">
       <div class="chart-head">
         <h2 class="card-title">Annual inflation rate</h2>
-        <p class="chart-note">Percent change in CPI from the previous year. Bars below the line are deflation.</p>
+        <p class="chart-note">Percent change in the index from the previous year. Bars below the line are deflation.</p>
       </div>
       <div class="chart-host" data-h-chart></div>
     </div>
@@ -175,12 +181,12 @@
     </div>
     <div class="card">
       <div class="chart-head">
-        <h2 class="card-title">Full series</h2>
-        <p class="chart-note">Annual averages, 1982&ndash;84 = 100.</p>
+        <h2 class="card-title">Full series for <span data-d-country></span></h2>
+        <p class="chart-note">Annual averages, index base <span data-d-base></span>.</p>
       </div>
       <div class="table-scroll">
         <table class="data-table" data-table>
-          <thead><tr><th>Year</th><th>CPI</th><th>Inflation</th></tr></thead>
+          <thead><tr><th>Year</th><th>Index</th><th>Inflation</th></tr></thead>
           <tbody></tbody>
         </table>
       </div>
@@ -199,11 +205,11 @@
         </p>
       </div>
       <div>
-        <h3>Pre-1913 figures</h3>
+        <h3>Coverage varies</h3>
         <p>
-          The official CPI begins in 1913. Earlier years use historical estimates
-          rescaled to the modern index base, so the two series join without a step.
-          Treat them as close approximations, not precise measurements.
+          The United States series reaches back to 1850. Most other countries begin
+          around 1960. Each country's index is national, and baskets differ between
+          countries, so cross-country comparisons are approximate.
         </p>
       </div>
       <div>
@@ -222,9 +228,9 @@
 <footer class="footer">
   <div class="wrap">
     <p>
-      Data: US Bureau of Labor Statistics (CPI-U, 1913&ndash;present) and the Federal Reserve
-      Bank of Minneapolis (historical estimates, 1850&ndash;1912). Figures before 1913 are
-      estimates. Not financial advice.
+      Data: World Bank (consumer price index, 190 countries) and, for the United States,
+      the Bureau of Labor Statistics with Federal Reserve historical estimates.
+      Figures before 1913 are estimates. Not financial advice.
     </p>
     <p class="footer-fine" data-footer-meta></p>
   </div>

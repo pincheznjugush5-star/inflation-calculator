@@ -58,10 +58,40 @@ body {
 }
 .masthead-inner {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 1rem;
   padding: 1.1rem 0 .9rem;
+}
+.country-picker { position: relative; display: flex; align-items: center; }
+.country-picker select {
+  appearance: none;
+  font-family: var(--sans);
+  font-size: .82rem;
+  font-weight: 600;
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: .5rem 2rem .5rem .75rem;
+  max-width: min(320px, 46vw);
+  cursor: pointer;
+  text-overflow: ellipsis;
+}
+.country-picker select:hover { border-color: var(--accent); }
+.country-picker select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.country-picker select:disabled { opacity: .55; cursor: progress; }
+.picker-caret {
+  position: absolute;
+  right: .7rem;
+  pointer-events: none;
+  color: var(--ink-mute);
+  font-size: .7rem;
+}
+.sr-only {
+  position: absolute; width: 1px; height: 1px;
+  padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 .brand { display: flex; align-items: center; gap: .6rem; }
 .brand-mark {
@@ -117,7 +147,27 @@ body {
   color: var(--ink-soft);
   font-size: 1.04rem;
   margin: 0;
+  line-height: 1.7;
 }
+.hero-coverage {
+  margin: .9rem 0 0;
+  font-size: .76rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+}
+.linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-deep);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.linkish:hover { color: var(--accent); }
+.linkish:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
 
 /* ---------- tabs ---------- */
 .tabs {

@@ -1,10 +1,12 @@
-/* US Inflation Calculator - front end.
+/* Inflation calculator front end.
    Plain ES2020, no build step, no external libraries. */
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
 const state = {
+  countries: [],
+  country: null, // summary for the selected country
   meta: null,
   series: null,
   stats: null,
@@ -12,40 +14,60 @@ const state = {
 
 /* ------------------------------ formatting ------------------------------ */
 
-const usd = (n, digits = 2) =>
-  new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: digits,
-    maximumFractionDigits: digits,
-  }).format(n);
+/** Currency-aware formatting, with graceful fallback for exotic codes. */
+function makeMoneyFormatter(currency) {
+  const { code, symbol } = currency;
+  let nf = null;
+  if (code) {
+    try {
+      nf = new Intl.NumberFormat("en-US", { style: "currency", currency: code });
+    } catch {
+      nf = null;
+    }
+  }
+  return (value) => {
+    if (!Number.isFinite(value)) return "—";
+    const abs = Math.abs(value);
+    // Very large results (hyperinflation) are unreadable as plain digits, so
+    // switch to scientific notation once the number gets unwieldy.
+    if (abs >= 1e15) {
+      const exp = value.toExponential(3).replace("e+", " × 10^");
+      return `${symbol || code || ""}${exp}`;
+    }
+    let text;
+    if (nf) {
+      const digits = abs >= 1000 ? 0 : abs >= 1 ? 2 : 4;
+      nf.minimumFractionDigits = 0;
+      nf.maximumFractionDigits = digits;
+      text = nf.format(value);
+    } else {
+      text = `${symbol || ""}${new Intl.NumberFormat("en-US", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: abs >= 1000 ? 0 : 2,
+      }).format(value)}`;
+    }
+    return text;
+  };
+}
 
-const usdSmart = (n) => {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return usd(n, 0);
-  if (abs >= 100) return usd(n, 0);
-  if (abs >= 1) return usd(n, 2);
-  return usd(n, 4);
-};
-
-const pct = (n, digits = 2) =>
-  `${n >= 0 ? "" : "-"}${Math.abs(n * 100).toFixed(digits)}%`;
-
+const pct = (n, digits = 2) => `${n >= 0 ? "" : "-"}${Math.abs(n * 100).toFixed(digits)}%`;
 const signedPct = (n, digits = 2) => `${n >= 0 ? "+" : "-"}${Math.abs(n * 100).toFixed(digits)}%`;
-
-const num = (n, digits = 1) =>
+const num = (n, digits = 2) =>
   new Intl.NumberFormat("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }).format(n);
 
 /** Compact axis label that stays readable across very different magnitudes. */
 function axisLabel(v) {
   const abs = Math.abs(v);
   if (abs === 0) return "0";
-  if (abs >= 1_000_000) return `${(v / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1e12) return `${(v / 1e12).toFixed(1)}T`;
+  if (abs >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
+  if (abs >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
   if (abs >= 10_000) return `${(v / 1000).toFixed(0)}k`;
   if (abs >= 1000) return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(v);
   if (abs >= 10) return v.toFixed(0);
   if (abs >= 1) return v.toFixed(1);
-  return v.toFixed(2);
+  if (abs >= 0.01) return v.toFixed(2);
+  return v.toExponential(1);
 }
 
 /* ------------------------------ api ------------------------------ */
@@ -59,6 +81,8 @@ async function api(path, params = {}) {
   if (!res.ok) throw new Error(body.error || `request failed (${res.status})`);
   return body;
 }
+
+const countryParam = () => (state.country ? state.country.iso3 : undefined);
 
 /* ------------------------------ chart helpers ------------------------------ */
 
@@ -88,19 +112,10 @@ function ticks(min, max, target = 5) {
   return out;
 }
 
-/**
- * Line chart of the index over time, with optional highlighted years.
- * Returns the <svg> element.
- */
+/** Line chart of the index over time, with optional highlighted years. */
 function lineChart(points, opts = {}) {
-  const {
-    width = 940,
-    height = 340,
-    markers = [],
-    areaFrom = null,
-    yLabel = axisLabel,
-  } = opts;
-  const pad = { top: 18, right: 18, bottom: 34, left: 52 };
+  const { width = 940, height = 340, markers = [], areaFrom = null, yLabel = axisLabel } = opts;
+  const pad = { top: 18, right: 18, bottom: 34, left: 58 };
   const iw = width - pad.left - pad.right;
   const ih = height - pad.top - pad.bottom;
 
@@ -135,8 +150,8 @@ function lineChart(points, opts = {}) {
     svg.append(el("text", { x: pad.left - 8, y: y + 3.5, "text-anchor": "end" }, yLabel(t)));
   }
 
-  const xTicks = ticks(xMin, xMax, 6).filter((t) => t >= xMin && t <= xMax);
-  for (const t of xTicks) {
+  for (const t of ticks(xMin, xMax, 6)) {
+    if (t < xMin || t > xMax) continue;
     svg.append(el("text", { x: X(t), y: height - 12, "text-anchor": "middle" }, String(Math.round(t))));
   }
   svg.append(el("line", { class: "axis-line", x1: pad.left, y1: pad.top + ih, x2: width - pad.right, y2: pad.top + ih }));
@@ -228,129 +243,126 @@ async function updateConvert() {
   const toYear = clampYear(Number($("#c-to").value));
   $("#c-from").value = fromYear;
   $("#c-to").value = toYear;
+  const money = makeMoneyFormatter(state.country.currency);
 
   let data;
   try {
-    data = await api("/api/convert", { amount, from_year: fromYear, to_year: toYear });
+    data = await api("/api/convert", {
+      country: countryParam(), amount, from_year: fromYear, to_year: toYear,
+    });
   } catch (err) {
     $("[data-c-result]").textContent = "—";
     $("[data-c-caption]").textContent = err.message;
     return;
   }
 
-  $("[data-c-result]").textContent = usdSmart(data.result);
-  const dir = data.total_change >= 0 ? "is-up" : "is-down";
   const big = $("[data-c-result]");
+  big.textContent = money(data.result);
   big.classList.remove("is-up", "is-down");
-  big.classList.add(dir);
+  big.classList.add(data.total_change >= 0 ? "is-up" : "is-down");
 
   $("[data-c-caption]").textContent =
     data.from_year === data.to_year
       ? `No change between ${data.from_year} and ${data.to_year}.`
-      : `${usdSmart(data.amount)} in ${data.from_year} has the same buying power as ${usdSmart(data.result)} in ${data.to_year}.`;
+      : `${money(data.amount)} in ${data.from_year} has the same buying power as ${money(data.result)} in ${data.to_year}.`;
 
   $("[data-c-total]").textContent = signedPct(data.total_change);
   $("[data-c-factor]").textContent = `${num(data.factor, 2)}×`;
   $("[data-c-annual]").textContent = data.years > 0 ? `${pct(data.annualized)} a year` : "—";
-  $("[data-c-index]").textContent = `${data.from_index.toFixed(1)} → ${data.to_index.toFixed(1)}`;
+  $("[data-c-index]").textContent = `${axisLabel(data.from_index)} → ${axisLabel(data.to_index)}`;
 
   const flag = $("[data-c-flag]");
   const messages = [];
-  if (data.projected) messages.push(`${data.to_year} is beyond the latest measured data (${state.meta.last_year}), so that value uses your assumed rate.`);
-  if (data.from_year < 1913 || data.to_year < 1913) messages.push("Years before 1913 rely on historical estimates and are less precise than the official CPI.");
+  if (data.projected) {
+    messages.push(`${data.to_year} is beyond the latest measured data (${state.meta.last_year}), so that value uses your assumed rate.`);
+  }
+  if (state.country.iso3 === "USA" && (data.from_year < 1913 || data.to_year < 1913)) {
+    messages.push("US years before 1913 rely on historical estimates and are less precise than the official CPI.");
+  }
+  if (state.country.first_year > 1850 && data.from_year <= state.country.first_year + 2) {
+    messages.push(`${state.country.short_name || state.country.name} data begins in ${state.country.first_year}.`);
+  }
   flag.hidden = messages.length === 0;
   flag.textContent = messages.join(" ");
 
-  updateConvertChart(data);
+  updateConvertChart(data, money);
 }
 
-function updateConvertChart(data) {
+function updateConvertChart(data, money) {
   const annual = state.series.annual;
   const points = Object.keys(annual)
     .map(Number)
     .sort((a, b) => a - b)
     .map((year) => ({ year, value: annual[year] }));
+  const at = (year, fallback) => (annual[year] !== undefined ? annual[year] : fallback);
   const markers = [
-    { year: data.from_year, value: valueAtYear(data.from_year, data.from_index) },
-    { year: data.to_year, value: valueAtYear(data.to_year, data.to_index) },
-  ].filter((m) => m.value !== null);
+    { year: data.from_year, value: at(data.from_year, data.from_index) },
+    { year: data.to_year, value: at(data.to_year, data.to_index) },
+  ];
   render($("[data-c-chart]"), lineChart(points, { markers, areaFrom: 0 }));
-}
-
-function valueAtYear(year, fallback) {
-  const annual = state.series?.annual || {};
-  return annual[year] !== undefined ? annual[year] : fallback;
 }
 
 function clampYear(year) {
   if (!Number.isFinite(year)) return state.meta.current_year;
-  return Math.min(2200, Math.max(state.meta.first_year, Math.round(year)));
+  return Math.min(2200, Math.max(state.country.first_year, Math.round(year)));
 }
 
 /* ------------------------------ project tab ------------------------------ */
+
+let historicalRate = 0.025;
 
 async function updateProject() {
   const baseYear = state.meta.last_year;
   const years = Number($("#p-years").value);
   const rate = Number($("#p-rate").value) / 100;
   const amount = Math.max(0, Number($("#p-amount").value) || 0);
+  const money = makeMoneyFormatter(state.country.currency);
 
   $("[data-p-years-out]").textContent = years;
   $("[data-p-rate-out]").textContent = `${(rate * 100).toFixed(1)}%`;
   $("[data-p-base-year]").textContent = baseYear;
-  $("[data-p-legend-amount]").textContent = usdSmart(amount);
+  $("[data-p-legend-amount]").textContent = money(amount);
 
   const endYear = baseYear + years;
   const data = await api("/api/project", {
-    amount,
-    base_year: baseYear,
-    end_year: endYear,
-    forward_rate: rate,
+    country: countryParam(), amount, base_year: baseYear, end_year: endYear, forward_rate: rate,
   });
 
   const final = data.points[data.points.length - 1];
-  $("[data-p-result]").textContent = usdSmart(final.value);
+  $("[data-p-result]").textContent = money(final.value);
   $("[data-p-caption]").textContent =
-    `${usdSmart(amount)} of ${baseYear} money needs to be ${usdSmart(final.value)} in ${final.year} to buy the same things.`;
+    `${money(amount)} of ${baseYear} money needs to be ${money(final.value)} in ${final.year} to buy the same things.`;
   $("[data-p-increase]").textContent = signedPct(final.value / amount - 1);
   $("[data-p-power]").textContent = `${((amount / final.value) * 100).toFixed(1)}%`;
   $("[data-p-span]").textContent = `${years} year${years === 1 ? "" : "s"}`;
   $("[data-p-rate-stat]").textContent = pct(rate, 1);
 
   const baseIndex = data.points[0].index;
-  const realPoints = data.points.map((p) => ({
-    year: p.year,
-    value: amount * (baseIndex / p.index),
-  }));
+  const realPoints = data.points.map((p) => ({ year: p.year, value: amount * (baseIndex / p.index) }));
   const finalReal = realPoints[realPoints.length - 1];
   render(
     $("[data-p-chart]"),
-    lineChart(realPoints, {
-      markers: [{ year: finalReal.year, value: finalReal.value }],
-      areaFrom: 0,
-    })
+    lineChart(realPoints, { markers: [{ year: finalReal.year, value: finalReal.value }], areaFrom: 0 })
   );
 
   const half = data.points.find((p) => p.value >= amount * 2);
-  const halfBody = half
+  $("[data-p-callout-title]").textContent = half ? "Doubling point" : "Cumulative effect";
+  $("[data-p-callout-body]").textContent = half
     ? `At this rate the same goods cost double by ${half.year}, ${half.year - baseYear} years from now.`
     : `Even after ${years} years the cumulative rise stays under 100% at this rate.`;
-  $("[data-p-callout-title]").textContent = half ? "Doubling point" : "Cumulative effect";
-  $("[data-p-callout-body]").textContent = halfBody;
 }
 
 /* ------------------------------ history tab ------------------------------ */
 
 function renderHistory() {
   const s = state.stats;
-  const strip = $("[data-h-strip]");
   const items = [
     { k: "Years of data", v: `${s.first_year}–${s.last_year}`, s: `${s.observations} annual averages` },
     { k: "Average inflation", v: pct(s.mean_inflation), s: `per year since ${s.first_year + 1}` },
     { k: "Highest year", v: signedPct(s.highest_year.rate, 1), s: `${s.highest_year.year} · sharpest rise` },
     { k: "Deflation years", v: String(s.deflation_years), s: "years prices fell" },
   ];
-  strip.replaceChildren(
+  $("[data-h-strip]").replaceChildren(
     ...items.map((it) => {
       const d = document.createElement("div");
       d.innerHTML = `<span class="k">${it.k}</span><span class="v">${it.v}</span><span class="s">${it.s}</span>`;
@@ -361,14 +373,9 @@ function renderHistory() {
   render($("[data-h-chart]"), barChart(s.year_over_year));
 
   const yoy = s.year_over_year;
-  const deflation = yoy.filter((r) => r.rate < 0);
-  const extremes = yoy
-    .filter((r) => r.rate >= 0)
-    .sort((a, b) => b.rate - a.rate)
-    .slice(0, 6);
   const rows = [
-    ...deflation.map((r) => ({ ...r, tag: "Deflation" })),
-    ...extremes.map((r) => ({ ...r, tag: "Sharp rise" })),
+    ...yoy.filter((r) => r.rate < 0).map((r) => ({ ...r, tag: "Deflation" })),
+    ...yoy.filter((r) => r.rate >= 0).sort((a, b) => b.rate - a.rate).slice(0, 6).map((r) => ({ ...r, tag: "Sharp rise" })),
   ].sort((a, b) => a.year - b.year);
 
   $("[data-h-episodes]").replaceChildren(
@@ -387,38 +394,134 @@ function renderHistory() {
 
 function renderData() {
   const meta = state.meta.meta;
+  const country = state.country;
+  const sources = [
+    {
+      name: country.source,
+      detail: country.source_detail || `Series used for ${country.short_name || country.name}.`,
+      cover: `Coverage ${country.first_year}–${country.last_year} · ${country.observations} annual averages · base ${country.index_base}`,
+      url: country.iso3 === "USA" ? "https://www.bls.gov/cpi/" : "https://data.worldbank.org/indicator/FP.CPI.TOTL",
+    },
+    ...(meta.sources || []).filter((s) => s.name !== country.source),
+  ];
+
   $("[data-sources]").replaceChildren(
-    ...meta.sources.map((src) => {
+    ...sources.map((src) => {
       const d = document.createElement("div");
       d.className = "source";
       d.innerHTML = `<h3>${src.name}</h3>
         <p>${src.detail} <a href="${src.url}" rel="noopener noreferrer" target="_blank">Source</a></p>
-        <p class="cover">Series ${src.series} · coverage ${src.coverage}</p>`;
+        <p class="cover">${src.cover || src.series || ""}</p>`;
       return d;
+    }),
+    Object.assign(document.createElement("p"), {
+      className: "hint",
+      textContent: meta.caveat || "",
     })
   );
 
   const annual = state.series.annual;
   const years = Object.keys(annual).map(Number).sort((a, b) => b - a);
-  const tbody = $("[data-table] tbody");
-  tbody.replaceChildren(
+  $("[data-table] tbody").replaceChildren(
     ...years.map((year) => {
       const value = annual[year];
       const prev = annual[year - 1];
       const rate = prev ? value / prev - 1 : null;
       const tr = document.createElement("tr");
+      const preUs = country.iso3 === "USA" && year < 1913;
       const rateCell =
-        rate === null
-          ? `<td class="pre">—</td>`
-          : `<td class="${rate < 0 ? "neg" : ""}">${signedPct(rate)}</td>`;
-      tr.innerHTML = `<td class="${year < 1913 ? "pre" : ""}">${year}${year < 1913 ? "*" : ""}</td>
-        <td>${value.toFixed(1)}</td>${rateCell}`;
+        rate === null ? `<td class="pre">—</td>` : `<td class="${rate < 0 ? "neg" : ""}">${signedPct(rate)}</td>`;
+      tr.innerHTML = `<td class="${preUs ? "pre" : ""}">${year}${preUs ? "*" : ""}</td>
+        <td>${axisLabel(value)}</td>${rateCell}`;
       return tr;
     })
   );
 
   $("[data-footer-meta]").textContent =
-    `Series generated ${meta.generated_utc}. ${state.series.first_year}–${state.meta.last_year}, ${state.stats.observations} annual averages. * pre-1913 estimates.`;
+    `Generated ${meta.generated_utc || "—"}. ${country.short_name || country.name}: ${country.first_year}–${country.last_year}, ` +
+    `${state.stats.observations} annual averages, index base ${country.index_base}.`;
+}
+
+/* ------------------------------ country handling ------------------------------ */
+
+function populateCountries(select) {
+  const groups = new Map();
+  for (const c of state.countries) {
+    const letter = (c.short_name || c.name).trim().charAt(0).toUpperCase();
+    if (!groups.has(letter)) groups.set(letter, []);
+    groups.get(letter).push(c);
+  }
+  const frag = document.createDocumentFragment();
+  for (const letter of [...groups.keys()].sort()) {
+    const og = document.createElement("optgroup");
+    og.label = letter;
+    for (const c of groups.get(letter)) {
+      const opt = document.createElement("option");
+      opt.value = c.iso3;
+      opt.textContent = `${c.short_name || c.name} (${c.currency.code})`;
+      og.append(opt);
+    }
+    frag.append(og);
+  }
+  select.replaceChildren(frag);
+}
+
+async function loadCountry(iso3) {
+  const [meta, series, stats] = await Promise.all([
+    api("/api/meta", { country: iso3 }),
+    api("/api/series", { country: iso3 }),
+    api("/api/stats", { country: iso3 }),
+  ]);
+  state.country = meta.country;
+  state.meta = meta;
+  state.series = series;
+  state.stats = stats;
+
+  const money = makeMoneyFormatter(state.country.currency);
+  const { first_year: first, last_year: last, currency, index_base } = state.country;
+  // Short name for the interface; the formal UN name is kept for provenance.
+  const name = state.country.short_name || state.country.name;
+
+  // Country-dependent labels
+  $$("[data-c-currency-name]").forEach((n) => (n.textContent = currency.name || currency.code));
+  $$("[data-c-symbol], [data-p-symbol]").forEach((n) => (n.textContent = currency.symbol || currency.code));
+  $$("[data-c-base], [data-d-base]").forEach((n) => (n.textContent = index_base));
+  $("[data-d-country]").textContent = name;
+  $("[data-c-chart-span]").textContent = `${first}–${last}`;
+
+  const from = $("#c-from");
+  const to = $("#c-to");
+  from.min = String(first);
+  from.max = "2200";
+  to.min = String(first);
+  to.max = "2200";
+  to.value = last;
+  // Keep the starting year sensible for the newly selected country.
+  const currentFrom = Number(from.value);
+  if (!Number.isFinite(currentFrom) || currentFrom < first || currentFrom > last) {
+    from.value = first;
+  }
+
+  $("[data-range-hint]").textContent =
+    `${name} data covers ${first} to ${last}. Later years are projected at your assumed rate.`;
+  $("[data-coverage]").textContent =
+    `${name} · ${first}–${last} · index base ${index_base} · ${currency.name || currency.code}`;
+
+  // Historical average inflation, offered as a one-click assumption.
+  const observedYears = Object.keys(state.series.annual).map(Number).sort((a, b) => a - b);
+  const span = observedYears[observedYears.length - 1] - observedYears[0];
+  historicalRate = span > 0 ? (last_index_ratio(state.series.annual, observedYears) ** (1 / span)) - 1 : 0.025;
+  $("[data-p-hist-rate]").textContent = pct(historicalRate, 1);
+  $("[data-p-base-year]").textContent = last;
+
+  renderHistory();
+  renderData();
+  await updateConvert();
+  await updateProject();
+}
+
+function last_index_ratio(annual, years) {
+  return annual[years[years.length - 1]] / annual[years[0]];
 }
 
 /* ------------------------------ boot ------------------------------ */
@@ -445,34 +548,26 @@ function debounce(fn, ms = 180) {
 }
 
 async function boot() {
-  $$("[data-now]").forEach((n) => (n.textContent = String(new Date().getFullYear())));
+  const catalog = await api("/api/countries");
+  state.countries = catalog.countries;
+  $("[data-country-count]").textContent = catalog.count;
 
-  const [meta, series, stats] = await Promise.all([
-    api("/api/meta"),
-    api("/api/series"),
-    api("/api/stats"),
-  ]);
-  state.meta = meta;
-  state.series = series;
-  state.stats = stats;
-
-  const last = meta.last_year;
-  $("#c-to").value = last;
-  $("#c-to").max = "2200";
-  $("#c-from").max = "2200";
-  $("#c-from").min = String(meta.first_year);
-  $("[data-range-hint]").textContent =
-    `Data covers ${meta.first_year} to ${meta.last_year}. Later years are projected at your assumed rate.`;
-  $("#p-amount").value = 1000;
+  const select = $("#country");
+  populateCountries(select);
+  // Allow deep links such as ?country=JPN so a country can be shared or bookmarked.
+  const requested = (new URLSearchParams(location.search).get("country") || "").toUpperCase();
+  const known = state.countries.some((c) => c.iso3 === requested || c.iso2 === requested);
+  select.value = known
+    ? (state.countries.find((c) => c.iso3 === requested || c.iso2 === requested) || {}).iso3
+    : catalog.default;
 
   const run = debounce(updateConvert, 150);
-  ["#c-amount", "#c-from", "#c-to"].forEach((sel) =>
-    $(sel).addEventListener("input", run)
-  );
+  ["#c-amount", "#c-from", "#c-to"].forEach((sel) => $(sel).addEventListener("input", run));
+
   $$("[data-quick]").forEach((chip) =>
     chip.addEventListener("click", () => {
-      $("#c-from").value = chip.dataset.quick;
-      $("#c-to").value = last;
+      $("#c-from").value = chip.dataset.quick === "first" ? state.country.first_year : chip.dataset.quick;
+      $("#c-to").value = state.country.last_year;
       updateConvert();
     })
   );
@@ -486,11 +581,29 @@ async function boot() {
     })
   );
 
+  $("[data-use-historical]").addEventListener("click", () => {
+    const rate = Math.min(15, Math.max(0, historicalRate * 100));
+    $("#p-rate").value = rate.toFixed(1);
+    $("[data-p-rate-out]").textContent = `${rate.toFixed(1)}%`;
+    updateProject();
+  });
+
+  select.addEventListener("change", async () => {
+    select.disabled = true;
+    try {
+      await loadCountry(select.value);
+      const url = new URL(location.href);
+      url.searchParams.set("country", select.value);
+      history.replaceState(null, "", url);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      select.disabled = false;
+    }
+  });
+
   wireTabs();
-  renderHistory();
-  renderData();
-  await updateConvert();
-  await updateProject();
+  await loadCountry(select.value);
 }
 
 boot().catch((err) => {

@@ -23,7 +23,15 @@ from .calc import (
     stats,
     year_over_year,
 )
-from .data import DEFAULT_FORWARD_RATE, current_year, load_series
+from .data import (
+    DEFAULT_COUNTRY,
+    DEFAULT_FORWARD_RATE,
+    country_list,
+    current_year,
+    get_country,
+    load_series,
+    world_meta,
+)
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 
@@ -61,18 +69,41 @@ def _float(params: dict, key: str, default: float) -> float:
         raise BadRequest(f"parameter {key} must be a number") from None
 
 
+def _resolve_series(params: dict):
+    """The requested country's series, defaulting to the United States."""
+    code = params.get("country") or DEFAULT_COUNTRY
+    try:
+        return get_country(code)
+    except KeyError:
+        raise BadRequest(f"unknown country code: {code}") from None
+
+
+def api_countries(series, params: dict) -> dict:
+    return {
+        "default": DEFAULT_COUNTRY,
+        "count": len(country_list()),
+        "countries": country_list(),
+        "meta": world_meta(),
+    }
+
+
 def api_meta(series, params: dict) -> dict:
     return {
+        "country": series.summary(),
         "first_year": series.first_year,
         "last_year": series.last_year,
         "current_year": current_year(),
         "default_forward_rate": DEFAULT_FORWARD_RATE,
-        "meta": series.meta,
+        "meta": {
+            **world_meta(),
+            "caveat": series.source and world_meta().get("caveat", ""),
+        },
     }
 
 
 def api_series(series, params: dict) -> dict:
     return {
+        "country": series.summary(),
         "annual": {str(y): v for y, v in sorted(series.annual.items())},
         "first_year": series.first_year,
         "last_year": series.last_year,
@@ -138,6 +169,7 @@ def _check_years(series, from_year: int, to_year: int) -> None:
 
 
 ROUTES = {
+    "/api/countries": api_countries,
     "/api/meta": api_meta,
     "/api/series": api_series,
     "/api/convert": api_convert,
@@ -158,7 +190,8 @@ class Handler(BaseHTTPRequestHandler):
         params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
         try:
             if parsed.path in ROUTES:
-                payload = ROUTES[parsed.path](load_series(), params)
+                series = _resolve_series(params)
+                payload = ROUTES[parsed.path](series, params)
                 self._send_json(200, payload)
             elif parsed.path == "/":
                 self._send_file(WEB_DIR / "index.html")

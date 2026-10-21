@@ -1,4 +1,7 @@
-"""US inflation calculator: historical conversion and forward projection."""
+"""Inflation calculator: historical conversion and forward projection.
+
+Supports the United States (1850+) and 190 countries via the World Bank CPI index.
+"""
 
 from .calc import (
     Conversion,
@@ -11,21 +14,39 @@ from .calc import (
     stats,
     year_over_year,
 )
-from .data import DEFAULT_FORWARD_RATE, Series, current_year, load_series, resolve_index
+from .data import (
+    DEFAULT_COUNTRY,
+    DEFAULT_FORWARD_RATE,
+    Currency,
+    Series,
+    country_codes,
+    country_list,
+    current_year,
+    get_country,
+    load_series,
+    resolve_index,
+    world_meta,
+)
 
 __all__ = [
     "Conversion",
+    "Currency",
+    "DEFAULT_COUNTRY",
     "DEFAULT_FORWARD_RATE",
     "ProjectionPoint",
     "Series",
     "average_inflation",
     "convert",
+    "country_codes",
+    "country_list",
     "cumulative_inflation",
     "current_year",
+    "get_country",
     "load_series",
     "project",
     "purchasing_power",
     "resolve_index",
     "stats",
+    "world_meta",
     "year_over_year",
 ]

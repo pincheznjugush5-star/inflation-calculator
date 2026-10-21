@@ -16,7 +16,14 @@ from inflation.calc import (
     stats,
     year_over_year,
 )
-from inflation.data import DEFAULT_FORWARD_RATE, load_series, resolve_index
+from inflation.data import (
+    DEFAULT_FORWARD_RATE,
+    country_codes,
+    country_list,
+    get_country,
+    load_series,
+    resolve_index,
+)
 
 
 class DataIntegrityTests(unittest.TestCase):
@@ -57,7 +64,117 @@ class DataIntegrityTests(unittest.TestCase):
         self.assertLess(abs(after), 0.10)
 
 
+class WorldDataTests(unittest.TestCase):
+    """Every shipped country must be internally usable, with a real currency."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.countries = {c["iso3"]: c for c in country_list()}
+
+    def test_has_many_countries(self):
+        self.assertGreaterEqual(len(self.countries), 180)
+
+    def test_usa_is_present_and_long(self):
+        usa = get_country("USA")
+        self.assertEqual(usa.first_year, 1850)
+
+    def test_every_country_has_currency_and_span(self):
+        for iso3, c in self.countries.items():
+            with self.subTest(country=iso3):
+                self.assertTrue(c["currency"]["code"], "missing ISO 4217 code")
+                self.assertGreater(c["last_year"], c["first_year"], "no usable span")
+
+    def test_every_index_is_positive(self):
+        # Guards against the rounding bug that zeroed hyperinflation-era values.
+        for iso3 in country_codes():
+            with self.subTest(country=iso3):
+                for year, value in get_country(iso3).annual.items():
+                    self.assertGreater(value, 0, f"{iso3} {year}")
+
+    def test_hyperinflation_precision_survives(self):
+        # Brazil's 1980 index is ~3.6e-10; rounding to a fixed number of decimal
+        # places would have flattened it to zero.
+        brazil = get_country("BRA")
+        self.assertLess(brazil.index(1980), 1e-8)
+        self.assertGreater(brazil.index(1980), 0)
+
+    def test_lookup_by_alpha2_and_alpha3(self):
+        self.assertEqual(get_country("US").iso3, "USA")
+        self.assertEqual(get_country("us").iso3, "USA")
+        self.assertEqual(get_country("GBR").iso3, get_country("GB").iso3)
+
+    def test_short_name_is_usable_and_present(self):
+        # The dropdown shows short_name, so it must never be blank, and formal
+        # names long enough to break the layout must have been shortened.
+        for iso3 in country_codes():
+            with self.subTest(country=iso3):
+                c = get_country(iso3)
+                self.assertTrue(c.display_name.strip())
+                self.assertLessEqual(len(c.display_name), 32, f"{iso3} still unwieldy")
+        self.assertEqual(get_country("GBR").display_name, "United Kingdom")
+        self.assertEqual(get_country("USA").display_name, "United States")
+
+    def test_unknown_country_raises(self):
+        with self.assertRaises(KeyError):
+            get_country("XYZ")
+
+    def test_world_bank_agrees_with_bls_for_usa(self):
+        # The World Bank's US series is an independent publication of the same
+        # BLS data, so its year-over-year rates must reproduce the official ones.
+        wb = get_country("USA")
+        for year in (2000, 2010, 2021, 2022):
+            with self.subTest(year=year):
+                rate = wb.index(year) / wb.index(year - 1) - 1
+                self.assertAlmostEqual(rate * 100, {2000: 3.36, 2010: 1.64, 2021: 4.70, 2022: 8.00}[year], places=2)
+
+
+class CountryConversionTests(unittest.TestCase):
+    """Conversions must be correct for countries beyond the United States."""
+
+    def test_united_kingdom_1970_to_2024(self):
+        # UK CPI (2010=100): 1970 = 9.3347, 2024 = 147.4108 -> factor 15.79.
+        uk = get_country("GBR")
+        result = convert(uk, 100, 1970, 2024)
+        self.assertAlmostEqual(result.factor, 15.7917, places=3)
+        self.assertAlmostEqual(result.result, 1579.17, places=1)
+
+    def test_japan_oil_shock_inflation(self):
+        # Japan's 1974 inflation was 23.2%, driven by the oil crisis.
+        japan = get_country("JPN")
+        rate = japan.index(1974) / japan.index(1973) - 1
+        self.assertAlmostEqual(rate * 100, 23.22, places=1)
+
+    def test_india_long_run(self):
+        india = get_country("IND")
+        self.assertAlmostEqual(india.index(2025) / india.index(1960), 92.21, places=1)
+
+    def test_conversion_is_reversible_within_a_country(self):
+        for iso3 in ("GBR", "JPN", "IND", "BRA"):
+            with self.subTest(country=iso3):
+                series = get_country(iso3)
+                first, last = series.first_year + 5, series.last_year
+                forward = convert(series, 100, first, last)
+                back = convert(series, forward.result, last, first)
+                self.assertAlmostEqual(back.result, 100, places=6)
+
+    def test_each_country_projects_from_its_own_last_observation(self):
+        for iso3 in ("GBR", "JPN", "DEU"):
+            with self.subTest(country=iso3):
+                series = get_country(iso3)
+                last = series.last_year
+                projected = resolve_index(series, last + 5, 0.03)
+                expected = series.index(last) * 1.03**5
+                self.assertAlmostEqual(projected, expected, places=6)
+
+    def test_year_before_a_countrys_data_is_rejected(self):
+        gbr = get_country("GBR")
+        with self.assertRaises(ValueError):
+            convert(gbr, 100, 1850, 2000)
+
+
 class ConvertTests(unittest.TestCase):
+    """Conversion must match the published ratio-of-indexes method."""
+
     @classmethod
     def setUpClass(cls):
         cls.series = load_series()
@@ -242,6 +359,53 @@ class ServerTests(unittest.TestCase):
         payload = self.api_stats(self.series, {})
         self.assertIn("year_over_year", payload)
         self.assertEqual(len(payload["year_over_year"]), len(self.series.annual) - 1)
+
+    def test_countries_endpoint_lists_every_country(self):
+        from inflation.server import api_countries
+
+        payload = api_countries(self.series, {})
+        self.assertEqual(payload["default"], "USA")
+        self.assertGreaterEqual(payload["count"], 180)
+        self.assertEqual(len(payload["countries"]), payload["count"])
+
+    def test_country_parameter_selects_a_different_series(self):
+        from inflation.server import _resolve_series
+
+        japan = _resolve_series({"country": "JPN"})
+        self.assertEqual(japan.iso3, "JPN")
+        self.assertEqual(japan.currency.code, "JPY")
+
+    def test_country_defaults_to_usa(self):
+        from inflation.server import _resolve_series
+
+        self.assertEqual(_resolve_series({}).iso3, "USA")
+
+    def test_unknown_country_is_a_bad_request(self):
+        from inflation.server import _resolve_series
+
+        with self.assertRaises(self.BadRequest):
+            _resolve_series({"country": "NOPE"})
+
+    def test_convert_for_another_country(self):
+        from inflation.server import _resolve_series
+
+        uk = _resolve_series({"country": "GBR"})
+        payload = self.api_convert(uk, {"amount": "100", "from_year": "1970", "to_year": "2024"})
+        self.assertAlmostEqual(payload["result"], 1579.17, places=1)
+
+    def test_meta_reports_the_selected_countrys_currency(self):
+        from inflation.server import _resolve_series
+
+        payload = self.api_meta(_resolve_series({"country": "IND"}), {})
+        self.assertEqual(payload["country"]["currency"]["code"], "INR")
+        self.assertEqual(payload["country"]["iso3"], "IND")
+
+    def test_year_outside_a_countrys_coverage_is_rejected(self):
+        from inflation.server import _resolve_series
+
+        uk = _resolve_series({"country": "GBR"})
+        with self.assertRaises(self.BadRequest):
+            self.api_convert(uk, {"from_year": "1850", "to_year": "2000"})
 
 
 if __name__ == "__main__":
