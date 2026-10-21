@@ -1,0 +1,5 @@
+# This app uses only the Python standard library, so there is nothing to
+# install. The file exists so platforms that detect Python by looking for a
+# dependency manifest (Heroku, Railway, some PaaS builders) recognise the
+# project. Keep it empty rather than adding pins: a dependency here would
+# contradict the "no third-party packages" guarantee the tests assert.

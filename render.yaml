@@ -1,11 +1,12 @@
 # Deploy config for platforms that read render.yaml (Render, and a useful
-# template for others). The app has no dependencies, so there is no build step.
+# template for others). There is no dependency install: the app is standard
+# library only, so the build is just a syntax check of the entry point.
 services:
   - type: web
     name: inflation-calculator
     runtime: python
     plan: free
-    buildCommand: ""
+    buildCommand: python3 -m compileall -q inflation
     startCommand: python3 -m inflation.server
     healthCheckPath: /api/freshness
     envVars:

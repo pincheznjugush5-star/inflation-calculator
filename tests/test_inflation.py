@@ -5,6 +5,7 @@ Run with:  python3 -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import ast
 import io
 import json
 import os
@@ -544,6 +545,58 @@ class ServerTests(unittest.TestCase):
         uk = _resolve_series({"country": "GBR"})
         with self.assertRaises(self.BadRequest):
             self.api_convert(uk, {"from_year": "1850", "to_year": "2000"})
+
+
+class StdlibOnlyTests(unittest.TestCase):
+    """The app must run on a bare Python install, with no pip step.
+
+    This is what lets the deploy skip a dependency install, so a stray
+    third-party import would silently break that guarantee.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.root = Path(__file__).resolve().parent.parent
+        cls.available = getattr(sys, "stdlib_module_names", None)
+        if cls.available is None:  # Python 3.9 has no stdlib_module_names
+            raise unittest.SkipTest("stdlib_module_names needs Python 3.10+")
+
+    def _imports(self, path):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        found = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for a in node.names:
+                    found.add(a.name.split(".")[0])
+            elif isinstance(node, ast.ImportFrom):
+                # level > 0 is a relative import, i.e. this package
+                if node.level == 0 and node.module:
+                    found.add(node.module.split(".")[0])
+        return found
+
+    def test_shipped_modules_import_only_stdlib(self):
+        local = {"inflation", "tools"}
+        offenders = {}
+        for folder in ("inflation", "tools"):
+            for path in (self.root / folder).rglob("*.py"):
+                for name in self._imports(path):
+                    if name in local or name in sys.stdlib_module_names:
+                        continue
+                    offenders.setdefault(name, []).append(path.name)
+        self.assertEqual(
+            offenders,
+            {},
+            f"third-party imports would need a pip install: {offenders}",
+        )
+
+    def test_requirements_file_declares_nothing(self):
+        """Platforms detect Python via this file, so it must stay empty."""
+        path = self.root / "requirements.txt"
+        self.assertTrue(path.exists(), "requirements.txt is needed for platform detection")
+        for line in path.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                self.fail(f"requirements.txt should not pin packages, found: {stripped!r}")
 
 
 class WebAssetTests(unittest.TestCase):

@@ -37,9 +37,10 @@ changes. `--port` and `--host` still take precedence when passed explicitly.
 PORT=8080 python3 -m inflation.server
 ```
 
-`Procfile` and `render.yaml` are included. There is nothing to install: the app
-is standard library only, so there is no build step and no dependency cache to
-warm.
+`Procfile`, `render.yaml` and an empty `requirements.txt` are included. There is
+nothing to install: the app is standard library only, so there is no dependency
+step. `requirements.txt` is present only because some platforms look for a
+dependency manifest before they will treat a repo as a Python project.
 
 ## What it does
 
