@@ -259,16 +259,40 @@ input[type="number"]:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(178, 58, 46, .12);
 }
-.input-money { position: relative; }
+/* The currency prefix is a flex sibling of the input, not an overlay. An
+   absolutely-positioned symbol needs a fixed padding-left to clear it, which
+   breaks for anything wider than one glyph (CHF, INR, R$). Laying them out in
+   flow means the digits always start after the symbol, however wide it is. */
+.input-money {
+  display: flex;
+  align-items: center;
+  gap: .35rem;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: .6rem .7rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+.input-money:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(178, 58, 46, .12);
+}
 .input-money span {
-  position: absolute;
-  left: .75rem; top: 50%;
-  transform: translateY(-50%);
+  flex: none;
   color: var(--ink-mute);
   font-size: 1.05rem;
-  pointer-events: none;
 }
-.input-money input { padding-left: 1.7rem; font-weight: 600; }
+.input-money input {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  font-weight: 600;
+}
+.input-money input:focus { box-shadow: none; }
 .year-input { font-variant-numeric: tabular-nums; }
 
 input[type="range"] {

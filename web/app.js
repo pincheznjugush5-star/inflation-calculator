@@ -14,11 +14,24 @@ const state = {
 
 /* ------------------------------ formatting ------------------------------ */
 
+/**
+ * Short prefix shown beside an amount, e.g. "$", "CHF", "R$".
+ * Some countries list several legal codes ("INR,BTN"), which is too long to
+ * sit in an input and is not a valid Intl currency code; use the first code
+ * there and let the full list stay in the currency name label.
+ */
+function currencyPrefix(currency) {
+  const raw = (currency.symbol || currency.code || "").trim();
+  if (!raw) return "";
+  return raw.includes(",") ? raw.split(",")[0].trim() : raw;
+}
+
 /** Currency-aware formatting, with graceful fallback for exotic codes. */
 function makeMoneyFormatter(currency) {
-  const { code, symbol } = currency;
+  const { code } = currency;
+  const prefix = currencyPrefix(currency);
   let nf = null;
-  if (code) {
+  if (code && !code.includes(",")) {
     try {
       nf = new Intl.NumberFormat("en-US", { style: "currency", currency: code });
     } catch {
@@ -32,7 +45,7 @@ function makeMoneyFormatter(currency) {
     // switch to scientific notation once the number gets unwieldy.
     if (abs >= 1e15) {
       const exp = value.toExponential(3).replace("e+", " × 10^");
-      return `${symbol || code || ""}${exp}`;
+      return `${prefix}${exp}`;
     }
     let text;
     if (nf) {
@@ -41,7 +54,7 @@ function makeMoneyFormatter(currency) {
       nf.maximumFractionDigits = digits;
       text = nf.format(value);
     } else {
-      text = `${symbol || ""}${new Intl.NumberFormat("en-US", {
+      text = `${prefix}${new Intl.NumberFormat("en-US", {
         minimumFractionDigits: 0,
         maximumFractionDigits: abs >= 1000 ? 0 : 2,
       }).format(value)}`;
@@ -527,7 +540,7 @@ async function loadCountry(iso3) {
 
   // Country-dependent labels
   $$("[data-c-currency-name]").forEach((n) => (n.textContent = currency.name || currency.code));
-  $$("[data-c-symbol], [data-p-symbol]").forEach((n) => (n.textContent = currency.symbol || currency.code));
+  $$("[data-c-symbol], [data-p-symbol]").forEach((n) => (n.textContent = currencyPrefix(currency)));
   $$("[data-c-base], [data-d-base]").forEach((n) => (n.textContent = index_base));
   $("[data-d-country]").textContent = name;
   $("[data-c-chart-span]").textContent = `${first}–${last}`;

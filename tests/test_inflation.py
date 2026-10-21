@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from inflation.calc import (
@@ -543,6 +544,71 @@ class ServerTests(unittest.TestCase):
         uk = _resolve_series({"country": "GBR"})
         with self.assertRaises(self.BadRequest):
             self.api_convert(uk, {"from_year": "1850", "to_year": "2000"})
+
+
+class WebAssetTests(unittest.TestCase):
+    """Guard the currency-prefix layout, which broke for multi-character symbols.
+
+    The prefix used to be absolutely positioned over the input with a fixed
+    padding-left reserving room for it, so any symbol wider than one glyph
+    (CHF, INR, CLP$) ran underneath the digits the user typed. Layout must stay
+    in flow, and the prefix must be short enough to sit in an input.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.web = Path(__file__).resolve().parent.parent / "web"
+        cls.css = (cls.web / "styles.css").read_text(encoding="utf-8")
+        cls.js = (cls.web / "app.js").read_text(encoding="utf-8")
+
+    def test_prefix_is_laid_out_in_flow(self):
+        """No absolute overlay: that is what caused the collision."""
+        block = self.css.split(".input-money {", 1)[1].split("}", 1)[0]
+        self.assertIn("display: flex", block)
+        self.assertNotIn("position: absolute", block)
+
+    def test_no_fixed_padding_reserves_space_for_the_prefix(self):
+        """A hardcoded padding-left cannot fit a variable-width prefix."""
+        self.assertNotIn("padding-left: 1.7rem", self.css)
+        self.assertNotIn("position: absolute", self.css.split(".input-money span", 1)[1].split("}", 1)[0])
+
+    def test_app_uses_the_shortened_prefix(self):
+        self.assertIn("function currencyPrefix", self.js)
+        self.assertIn("currencyPrefix(currency)", self.js)
+
+    def test_prefix_helper_shortens_multi_code_currencies(self):
+        """Mirror of the JS helper, so the rule itself is pinned down."""
+        def prefix(currency):
+            raw = (currency.get("symbol") or currency.get("code") or "").strip()
+            return raw.split(",")[0].strip() if "," in raw else raw
+
+        self.assertEqual(prefix({"code": "USD", "symbol": "$"}), "$")
+        self.assertEqual(prefix({"code": "CHF", "symbol": "CHF"}), "CHF")
+        self.assertEqual(prefix({"code": "CLP", "symbol": "CLP$"}), "CLP$")
+        self.assertEqual(prefix({"code": "INR,BTN", "symbol": "INR,BTN"}), "INR")
+        self.assertEqual(prefix({"code": "", "symbol": ""}), "")
+
+    @staticmethod
+    def _prefix(cur):
+        """Mirror of currencyPrefix() in web/app.js."""
+        raw = (cur.symbol or cur.code or "").strip()
+        return raw.split(",")[0].strip() if "," in raw else raw
+
+    def test_no_country_has_an_overlong_prefix(self):
+        """Every prefix must be short enough to render inside the field."""
+        for iso in country_codes():
+            prefix = self._prefix(get_country(iso).currency)
+            self.assertLessEqual(
+                len(prefix), 4, f"{iso} prefix {prefix!r} is too wide for the input"
+            )
+
+    def test_prefix_is_never_empty(self):
+        """An empty prefix would leave a stray gap in the field."""
+        for iso in country_codes():
+            self.assertTrue(
+                self._prefix(get_country(iso).currency),
+                f"{iso} has no usable currency prefix",
+            )
 
 
 if __name__ == "__main__":
